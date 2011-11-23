@@ -1,11 +1,23 @@
 require 'rexml/document'
 require 'builder'
 
-def product_xml
+# Utility function to make transcoding the regex simpler.
+def get_regex(pattern, encoding='ASCII', options=0)
+  Regexp.new(pattern.encode(encoding),options)
+end
+
+
+def output_xml (result)
+  #sort result
+  result = result.sort
+  
+  #output XML
   xml = Builder::XmlMarkup.new( :indent => 2 )
   xml.instruct! :xml, :encoding => "UTF-8"
-  xml.product do |p|
-    p.name "Test"
+  xml.resources do |r|
+    result.each do |key, value|
+      r.string value, :name=>key
+    end
   end
 end
 
@@ -43,20 +55,33 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
   filenum = 0;
   # 1. Read the iOS localization  
   result=Hash.new
-  Dir["#{ARGV[0]}/#{language}/**.strings"].each do |filename|
+  Dir["#{language}/Localizable.strings"].each do |filename|
     puts "Processing #{filename}..."    
-    file = File.new(filename, "r")
     counter = 1
-    while (line = file.gets)
-      separator = '" = "'
-      parts = line.partition separator
-      if parts[1] == separator
-        result[parts[0][1..-1]] = parts[2].chomp '"'
+    token = 0
+    skip = 0
+    open(filename, "rb:UTF-16LE") do |file|
+      while (line = file.gets)
+        separator = '" = "'.encode('UTF-16LE')
+        parts = line.partition separator
+        if parts[1] == separator
+          value = (parts[2][0..parts[2].index('";'.encode('UTF-16LE'))-1]).encode('UTF-8')
+          # replace special chars to underscore _
+          regex = get_regex('[ ()/,\.\'\?:]',line.encoding,16) # //u = 00010000 option bit set = 16
+          key = (parts[0][1..-1].downcase.gsub regex, '_'.encode('UTF-16LE')).encode('UTF-8')
+          # replace %@ to %s
+          key = key.gsub '%@', '%s'
+          value = value.gsub '%@', '%s'
+          
+          result[key] = value
+          token += 1
+        else
+          skip += 1
+        end
+        counter = counter + 1
       end
-      counter = counter + 1
     end
-    file.close
-    file = File.read(filename)
+    puts "#{counter} lines. #{token} tokens.  skipped #{skip} lines"
     filenum += 1
   end
   puts "String files:#{filenum}"  
@@ -69,7 +94,6 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
   end
 
   full_output = "#{ARGV[1]}/#{output}/strings.xml"
-  puts "Writing to #{full_output}"
   # 2. read the android original
   original = read_android("#{ARGV[1]}/values/strings.xml")
   original.each do |key, value|
@@ -85,14 +109,10 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
   end
   
   #write to android  
-  puts result
-  xml = Builder::XmlMarkup.new( :indent => 2 )
-  xml.instruct! :xml, :encoding => "UTF-8"
-  xml.resources do |r|
-    result.each do |key, value|
-      r.string value
-    end
-  end
+  puts "Writing to #{full_output}"
+  # puts result
+
+  puts output_xml result
   i = i + 1  
 end
 
