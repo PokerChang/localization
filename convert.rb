@@ -1,3 +1,5 @@
+invalid_keys=['break', 'default', 'import', 'new']
+
 require 'rexml/document'
 require 'builder'
 
@@ -7,7 +9,7 @@ def get_regex(pattern, encoding='ASCII', options=0)
 end
 
 
-def output_xml (result)
+def output_xml (result, attri)
   #sort result
   result = result.sort
   
@@ -16,7 +18,13 @@ def output_xml (result)
   xml.instruct! :xml, :encoding => "UTF-8"
   xml.resources do |r|
     result.each do |key, value|
-      r.string value, :name=>key
+      a = {'name'=>key}   
+      if !attri[key].nil?
+        attri[key].each do |ak, av|
+          a[ak] = av
+        end
+      end
+      r.string value, a
     end
   end
 end
@@ -33,18 +41,21 @@ mapping = Hash.new
 mapping["zh_Hans.lproj"] = 'values-zh'
 mapping["zh_Hant.lproj"] = 'values-zh-rTW'
 mapping["ru.lproj"] = 'values-ru'
+mapping["en.lproj"] = 'values'
 
 def read_android(path)
   result = Hash.new  
+  attributes = {}
   if File.exists?(path)
     xml = File.read(path)
     doc= REXML::Document.new(xml)
     # order alphabetically
     doc.elements.each('/resources/string') do |p|
       result[p.attributes['name']] = p.text.gsub(/\n/,' ').squeeze(' ')
+      attributes[p.attributes['name']] = p.attributes
     end
   end
-  return result
+  return {:result =>result, :attributes=>attributes}
 end
 
 i = 0
@@ -64,17 +75,21 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
       while (line = file.gets)
         separator = '" = "'.encode('UTF-16LE')
         parts = line.partition separator
-        if parts[1] == separator
+        if parts[1] == separator && line.index("%".encode('UTF-16LE')).nil?
           value = (parts[2][0..parts[2].index('";'.encode('UTF-16LE'))-1]).encode('UTF-8')
           # replace special chars to underscore _
-          regex = get_regex('[ ()/,\.\'\?:]',line.encoding,16) # //u = 00010000 option bit set = 16
+          regex = get_regex('[ ()/,\.\'\?:!\-&><]',line.encoding,16) # //u = 00010000 option bit set = 16
           key = (parts[0][1..-1].downcase.gsub regex, '_'.encode('UTF-16LE')).encode('UTF-8')
           # replace %@ to %s
           key = key.gsub '%@', '%s'
-          value = value.gsub '%@', '%s'
-          
-          result[key] = value
-          token += 1
+          value = (value.gsub '%@', '%s').gsub "'", "\\'"
+
+          if invalid_keys.include? key
+            skip += 1
+          else
+            result[key] = value
+            token += 1
+          end
         else
           skip += 1
         end
@@ -92,28 +107,48 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
     output = "values-#{code}"
     puts "Unknown mapping for #{short_name}.  Using default #{output}"
   end
-
-  full_output = "#{ARGV[1]}/#{output}/strings.xml"
+  dir = "#{ARGV[1]}/#{output}"
+  
+  begin
+    Dir::mkdir(dir)
+  rescue
+    
+  end
+  full_output = "#{dir}/strings.xml"
   # 2. read the android original
+  attributes = {}
   original = read_android("#{ARGV[1]}/values/strings.xml")
-  original.each do |key, value|
+  original[:result].each do |key, value|
     if result[key].nil? 
       result[key] = value
+    end
+  end
+  original[:attributes].each do |key, value|
+    if attributes[key].nil?
+      attributes[key] = value
     end
   end
   
   # 3. read the android localization
   old = read_android(full_output)
-  old.each do |key, value|
+  old[:result].each do |key, value|
     result[key] = value
+  end
+  old[:attributes].each do |key, value|
+    if attributes[key].nil?
+      attributes[key] = value
+    end
   end
   
   #write to android  
   puts "Writing to #{full_output}"
   # puts result
 
-  puts output_xml result
+  xml = output_xml result, attributes
+  open(full_output, "w") do|f|
+    f.write(xml)
+  end
   i = i + 1  
 end
 
-puts "Languages:#{i}"
+puts "Converted #{i} languages."
