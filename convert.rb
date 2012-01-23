@@ -1,3 +1,4 @@
+# convert existing iOS locationzation to Android
 invalid_keys=['break', 'default', 'import', 'new']
 
 require 'rexml/document'
