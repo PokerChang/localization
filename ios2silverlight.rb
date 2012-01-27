@@ -124,8 +124,8 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
         if parts[1] == separator
           value = (parts[2][0..parts[2].index('";'.encode('UTF-16LE'))-1]).encode('UTF-8')
           # no need to replace special chars to underscore _.
-          # only Android requires that.          
-          key = (parts[0][1..-1].downcase
+          # only Android requires that.
+          key = parts[0][1..-1].downcase.encode('UTF-8')
           # replace %@ to %s
           key = key.gsub '%@', '%s'
           value = (value.gsub '%@', '%s').gsub "'", "\\'"
@@ -153,14 +153,14 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
     output = "#{code}"
     puts "Using default #{output} mapping for #{short_name}."
   end
-  dir = "#{ARGV[1]}/#{output}"
+  dir = "#{ARGV[1]}/"
   
   begin
     Dir::mkdir(dir)
   rescue
     
   end
-  full_output = "#{dir}/Resources.resw"
+  full_output = "#{dir}/Resource.#{output}.resx"
   
   attributes = {}
   
