@@ -123,9 +123,13 @@ Dir["#{ARGV[0]}/**.lproj"].each do |language|
         end
         if parts[1] == separator
           value = (parts[2][0..parts[2].index('";'.encode('UTF-16LE'))-1]).encode('UTF-8')
-          # no need to replace special chars to underscore _.
-          # only Android requires that.          
-          key = (parts[0][1..-1].downcase
+          # replace special chars to underscore _ in key
+          regex = get_regex('[ ()/,\.\'\?:!\-&><]',line.encoding,16) # //u = 00010000 option bit set = 16
+          key = (parts[0][1..-1].downcase.gsub regex, '_'.encode('UTF-16LE')).encode('UTF-8')
+          
+          # Append .Content to every key
+          key = key + '.Content'
+          
           # replace %@ to %s
           key = key.gsub '%@', '%s'
           value = (value.gsub '%@', '%s').gsub "'", "\\'"
